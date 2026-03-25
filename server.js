@@ -5,6 +5,7 @@ import { spawn, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import cors from 'cors';
+import yaml from 'js-yaml';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,14 +23,14 @@ const io = new Server(httpServer, {
   }
 });
 
-const WORKFLOW_FILE = path.join(__dirname, 'workflow.json');
+const WORKFLOW_FILE = path.join(__dirname, 'workflow.yaml');
 
 // Load workflow config
 function loadWorkflow() {
   if (!fs.existsSync(WORKFLOW_FILE)) {
     return { title: 'Workflow Dashboard', tasks: [] };
   }
-  return JSON.parse(fs.readFileSync(WORKFLOW_FILE, 'utf8'));
+  return yaml.load(fs.readFileSync(WORKFLOW_FILE, 'utf8'));
 }
 
 // Find a task in the workflow config
