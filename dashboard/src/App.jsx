@@ -1,11 +1,38 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
-import { Play, Terminal as TerminalIcon, Folder, CheckCircle2, Layers, X, Trash2 } from 'lucide-react';
+import { Play, Terminal as TerminalIcon, Folder, CheckCircle2 } from 'lucide-react';
 
 const socket = io();
+
+// Helper to colorize log levels for xterm.js
+const colorizeLog = (text) => {
+  if (!text) return text;
+  // Split while preserving newlines
+  const lines = text.split(/(\r\n|\n)/);
+  return lines.map(line => {
+    if (line === '\n' || line === '\r\n') return line;
+    
+    // Check for level tags and colorize accordingly
+    if (line.includes('| SUCCESS  |')) {
+      return `\x1b[32m${line}\x1b[0m`; // Entire line Green
+    } else if (line.includes('| CRITICAL |')) {
+      return `\x1b[37m\x1b[41m${line}\x1b[0m`; // White text on Red background
+    } else if (line.includes('| ERROR    |')) {
+      return `\x1b[31m${line}\x1b[0m`; // Entire line Red
+    } else if (line.includes('| WARNING  |')) {
+      return `\x1b[33m${line}\x1b[0m`; // Entire line Yellow
+    } else if (line.includes('| INFO     |')) {
+      // Only the tag Cyan
+      return line.replace(/(\| INFO\s+\|)/g, '\x1b[36m$1\x1b[0m');
+    } else if (line.includes('| DEBUG    |')) {
+      return `\x1b[90m${line}\x1b[0m`; // Entire line Gray
+    }
+    return line;
+  }).join('');
+};
 
 function TerminalComponent({ selectedTask }) {
   const terminalRef = useRef(null);
@@ -70,13 +97,13 @@ function TerminalComponent({ selectedTask }) {
       xtermRef.current.clear();
       xtermRef.current.reset();
       if (data) {
-        xtermRef.current.write(data);
+        xtermRef.current.write(colorizeLog(data));
       }
     };
 
     const handleLog = ({ taskName: tn, data }) => {
       if (tn !== selectedTask || !xtermRef.current) return;
-      xtermRef.current.write(data);
+      xtermRef.current.write(colorizeLog(data));
     };
 
     const handleClear = ({ taskName: tn }) => {
@@ -103,114 +130,10 @@ function TerminalComponent({ selectedTask }) {
   );
 }
 
-function SessionModal({ isOpen, onClose }) {
-  const [sessions, setSessions] = useState([]);
-  const [killing, setKilling] = useState(new Set());
-
-  const fetchSessions = useCallback(() => {
-    fetch('/api/sessions')
-      .then(res => res.json())
-      .then(data => setSessions(data))
-      .catch(() => setSessions([]));
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    fetchSessions();
-    const interval = setInterval(fetchSessions, 3000);
-    return () => clearInterval(interval);
-  }, [isOpen, fetchSessions]);
-
-  const killSession = async (name) => {
-    setKilling(prev => new Set(prev).add(name));
-    try {
-      await fetch(`/api/sessions/${encodeURIComponent(name)}`, { method: 'DELETE' });
-      // Wait a moment then refresh
-      setTimeout(fetchSessions, 500);
-    } catch (err) {
-      console.error('Failed to kill session:', err);
-    } finally {
-      setKilling(prev => {
-        const next = new Set(prev);
-        next.delete(name);
-        return next;
-      });
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      {/* Modal */}
-      <div className="relative bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-[560px] max-h-[70vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <Layers size={20} className="text-blue-400" />
-            <h2 className="text-lg font-bold text-white">Active tmux Sessions</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-800 transition-colors text-slate-400 hover:text-white"
-          >
-            <X size={18} />
-          </button>
-        </div>
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {sessions.length === 0 ? (
-            <div className="text-center py-12 text-slate-500">
-              <Layers size={32} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm">No active sessions</p>
-            </div>
-          ) : (
-            sessions.map(session => (
-              <div
-                key={session.name}
-                className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:border-slate-600 transition-all group"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    <span className="font-mono font-bold text-sm text-white truncate">{session.name}</span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1 ml-4 truncate">{session.info}</p>
-                </div>
-                <button
-                  onClick={() => killSession(session.name)}
-                  disabled={killing.has(session.name)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${killing.has(session.name)
-                      ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                      : 'bg-red-900/30 text-red-400 hover:bg-red-900/60 hover:text-red-300 active:scale-95'
-                    }`}
-                >
-                  <Trash2 size={12} />
-                  {killing.has(session.name) ? 'Killing...' : 'Kill'}
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-        {/* Footer */}
-        <div className="p-3 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-500 uppercase">
-          <span>Auto-refresh: 3s</span>
-          <span>{sessions.length} session(s)</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function App() {
   const [workflow, setWorkflow] = useState({ title: 'Workflow Dashboard', tasks: [] });
   const [selectedTask, setSelectedTask] = useState(null);
-  const [argValues, setArgValues] = useState({}); // { taskName: { argName: value } }
   const [runningTasks, setRunningTasks] = useState(new Set());
-  const [sessionTasks, setSessionTasks] = useState(new Set());
-  const [showSessionModal, setShowSessionModal] = useState(false);
 
   useEffect(() => {
     fetch('/api/workflow')
@@ -218,101 +141,33 @@ function App() {
       .then(data => {
         setWorkflow(data);
         if (data.tasks.length > 0) setSelectedTask(data.tasks[0].name);
-        const existing = new Set(data.tasks.filter(t => t.hasSession).map(t => t.name));
-        setSessionTasks(existing);
-        // Initialize default values for all tasks
-        const defaults = {};
-        data.tasks.forEach(task => {
-          defaults[task.name] = {};
-          [...(task.args?.required || []), ...(task.args?.optional || [])].forEach(arg => {
-            defaults[task.name][arg.name] = arg.default !== undefined ? String(arg.default) : '';
-          });
-        });
-        setArgValues(defaults);
       });
 
     socket.on('session-started', ({ taskName }) => {
       setRunningTasks(prev => new Set(prev).add(taskName));
-      setSessionTasks(prev => new Set(prev).add(taskName));
-    });
-
-    socket.on('task-finished', ({ taskName }) => {
-      setRunningTasks(prev => {
-        const next = new Set(prev);
-        next.delete(taskName);
-        return next;
-      });
+      // In this version, we don't automatically clear running state since tasks run externally.
+      // We could add a timeout to clear it or just let the user run it again.
+      // For simplicity, we'll clear the running state after 2 seconds to allow re-running.
+      setTimeout(() => {
+        setRunningTasks(prev => {
+          const next = new Set(prev);
+          next.delete(taskName);
+          return next;
+        });
+      }, 2000);
     });
 
     return () => {
       socket.off('session-started');
-      socket.off('task-finished');
     };
   }, []);
 
   const currentTask = workflow.tasks.find(t => t.name === selectedTask);
 
-  const setArgValue = (taskName, argName, value) => {
-    setArgValues(prev => ({
-      ...prev,
-      [taskName]: { ...(prev[taskName] || {}), [argName]: value }
-    }));
-  };
-
-  const buildArgs = () => {
-    if (!currentTask) return '';
-    const vals = argValues[currentTask.name] || {};
-    const allArgs = [...(currentTask.args?.required || []), ...(currentTask.args?.optional || [])];
-    return allArgs
-      .filter(arg => vals[arg.name] !== undefined && vals[arg.name] !== '')
-      .map(arg => `${arg.flag} ${vals[arg.name]}`)
-      .join(' ');
-  };
-
-  const canRun = () => {
-    if (!currentTask) return false;
-    const vals = argValues[currentTask.name] || {};
-    return (currentTask.args?.required || []).every(arg => vals[arg.name] && vals[arg.name].trim() !== '');
-  };
-
   const runTask = () => {
-    if (!selectedTask || !canRun()) return;
+    if (!selectedTask || runningTasks.has(selectedTask)) return;
     setRunningTasks(prev => new Set(prev).add(selectedTask));
-    const args = buildArgs();
-    socket.emit('run-task', { taskName: selectedTask, args });
-  };
-
-  const renderArgField = (arg, isRequired) => {
-    const value = argValues[selectedTask]?.[arg.name] || '';
-
-    return (
-      <div key={arg.name} className="flex flex-col gap-1">
-        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-          {arg.description || arg.name}
-          {isRequired && <span className="text-red-400">*</span>}
-        </label>
-        {arg.type === 'select' ? (
-          <select
-            value={value}
-            onChange={(e) => setArgValue(selectedTask, arg.name, e.target.value)}
-            className="bg-slate-800 border border-slate-700 text-sm px-3 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all text-slate-200"
-          >
-            {(arg.options || []).map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        ) : (
-          <input
-            type={arg.type === 'number' ? 'number' : 'text'}
-            value={value}
-            onChange={(e) => setArgValue(selectedTask, arg.name, e.target.value)}
-            placeholder={arg.placeholder || arg.default?.toString() || ''}
-            className={`bg-slate-800 border text-sm px-3 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all ${isRequired && !value.trim() ? 'border-red-500/50' : 'border-slate-700'
-              }`}
-          />
-        )}
-      </div>
-    );
+    socket.emit('run-task', { taskName: selectedTask });
   };
 
   return (
@@ -325,16 +180,7 @@ function App() {
             {workflow.title}
           </h1>
         </div>
-        <button
-          onClick={() => setShowSessionModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all text-sm font-medium border border-slate-700"
-        >
-          <Layers size={16} />
-          Sessions
-        </button>
       </header>
-
-      <SessionModal isOpen={showSessionModal} onClose={() => setShowSessionModal(false)} />
 
       <main className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
@@ -356,21 +202,21 @@ function App() {
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full shrink-0 ${runningTasks.has(task.name)
-                        ? 'bg-green-500 animate-pulse'
-                        : sessionTasks.has(task.name)
-                          ? 'bg-yellow-500'
-                          : 'bg-slate-700'
-                      }`} />
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${runningTasks.has(task.name) ? 'bg-green-500 animate-pulse' : 'bg-slate-700'}`} />
                     <span className="font-medium truncate">{task.label || task.name}</span>
                   </div>
+                  <div className="flex items-center gap-3 mt-1 ml-5 text-[9px] uppercase tracking-wider font-bold">
+                    <span className={`flex items-center gap-1 ${task.cwdExists ? 'text-green-500/80' : 'text-red-500/80'}`}>
+                      <Folder size={10} /> CWD
+                    </span>
+                    <span className={`flex items-center gap-1 ${task.logExists ? 'text-blue-400/80' : 'text-slate-600'}`}>
+                      <TerminalIcon size={10} /> LOG
+                    </span>
+                  </div>
                   {task.description && (
-                    <p className="text-[10px] text-slate-600 mt-0.5 ml-5 truncate">{task.description}</p>
+                    <p className="text-[10px] text-slate-600 mt-1 ml-5 truncate">{task.description}</p>
                   )}
                 </div>
-                {sessionTasks.has(task.name) && !runningTasks.has(task.name) && (
-                  <span className="text-[10px] text-yellow-500 font-mono shrink-0 ml-2">tmux</span>
-                )}
               </button>
             ))}
           </div>
@@ -380,36 +226,28 @@ function App() {
         <section className="flex-1 flex flex-col p-6 space-y-4 overflow-hidden bg-slate-950">
           {currentTask ? (
             <>
-              {/* Task Header + Args */}
+              {/* Task Header */}
               <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-4">
                   <div>
                     <h2 className="text-2xl font-bold text-white mb-0.5">{currentTask.label || currentTask.name}</h2>
                     <p className="text-slate-400 text-sm">{currentTask.description}</p>
                     <p className="text-slate-600 text-xs mt-1 font-mono">{currentTask.command} • {currentTask.cwd}</p>
                   </div>
-                  <button
-                    onClick={runTask}
-                    disabled={!canRun() || runningTasks.has(selectedTask)}
-                    className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold transition-all shadow-lg shadow-blue-900/20 shrink-0 ${!canRun() || runningTasks.has(selectedTask)
-                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                        : 'bg-blue-600 hover:bg-blue-500 text-white active:scale-95'
-                      }`}
-                  >
-                    <Play size={18} fill={(!canRun() || runningTasks.has(selectedTask)) ? 'none' : 'currentColor'} />
-                    {runningTasks.has(selectedTask) ? 'Running...' : 'Run Task'}
-                  </button>
-                </div>
-
-                {/* Argument Fields */}
-                {((currentTask.args?.required?.length || 0) + (currentTask.args?.optional?.length || 0)) > 0 && (
-                  <div className="border-t border-slate-800 pt-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      {(currentTask.args?.required || []).map(arg => renderArgField(arg, true))}
-                      {(currentTask.args?.optional || []).map(arg => renderArgField(arg, false))}
-                    </div>
+                  <div className="pt-2">
+                    <button
+                      onClick={runTask}
+                      disabled={runningTasks.has(selectedTask)}
+                      className={`flex items-center gap-2 px-8 py-3 rounded-lg font-bold transition-all shadow-lg shadow-blue-900/20 shrink-0 ${runningTasks.has(selectedTask)
+                          ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                          : 'bg-blue-600 hover:bg-blue-500 text-white active:scale-95'
+                        }`}
+                    >
+                      <Play size={18} fill={runningTasks.has(selectedTask) ? 'none' : 'currentColor'} />
+                      {runningTasks.has(selectedTask) ? 'Running...' : 'Run Task'}
+                    </button>
                   </div>
-                )}
+                </div>
               </div>
 
               {/* Terminal Area */}
@@ -418,15 +256,6 @@ function App() {
                   <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
                     <TerminalIcon size={14} /> Execution Logs
                   </h3>
-                  {runningTasks.has(selectedTask) && (
-                    <span className="flex items-center gap-2 text-xs text-green-400 font-medium">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                      </span>
-                      Streaming live output
-                    </span>
-                  )}
                 </div>
                 <div className="flex-1 min-h-0">
                   <TerminalComponent selectedTask={selectedTask} />
@@ -447,13 +276,6 @@ function App() {
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5"><CheckCircle2 size={10} className="text-green-500" /> System Online</span>
           <span className="border-l border-slate-800 pl-4">Backend: localhost:3001</span>
-        </div>
-        <div>
-          {runningTasks.size > 0 ? (
-            <span className="text-blue-400">{runningTasks.size} Task(s) Active</span>
-          ) : (
-            <span>Ready</span>
-          )}
         </div>
       </footer>
     </div>

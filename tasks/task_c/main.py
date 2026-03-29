@@ -1,20 +1,26 @@
-import argparse
 import time
 import sys
+import os
+from loguru import logger
 
 def main():
-    parser = argparse.ArgumentParser(description="Report Generator Task")
-    parser.add_argument("--format", choices=["pdf", "html", "csv"], default="pdf", help="Report format")
-    parser.add_argument("--target", default="report", help="Target filename")
-    args = parser.parse_args()
+    os.makedirs('log', exist_ok=True)
+    logger.remove()
+    logger.add(sys.stdout, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>")
+    logger.add("log/task.log", format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}", rotation="10 MB", enqueue=True)
 
-    print(f"Starting Report Generator Task. Format: {args.format}, Target: {args.target}")
-    steps = ["Generating charts", "Aggregating data", "Formatting report", "Saving file"]
-    for i, step in enumerate(steps):
-        print(f"[{time.strftime('%H:%M:%S')}] Step {i+1}/{len(steps)}: {step}...")
-        time.sleep(2)
+    logger.info("Starting Report Generator Task")
+    for i in range(2):
+        logger.info(f"Generating report section {i+1}/4...")
+        time.sleep(1)
     
-    print(f"Report '{args.target}.{args.format}' generated. Task completed.")
+    # Intentional error simulation
+    logger.error("Failed to generate report section 3: Database connection timeout")
+    logger.critical("Task aborted due to critical failure")
+    
+    # Actually raise an exception for a "hard" failure if needed, 
+    # but the user asked to show ERROR level logging.
+    # sys.exit(1)
 
 if __name__ == "__main__":
     main()

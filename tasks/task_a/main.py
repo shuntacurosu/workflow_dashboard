@@ -1,19 +1,21 @@
-import argparse
 import time
 import sys
+import os
+from loguru import logger
 
 def main():
-    parser = argparse.ArgumentParser(description="Data Fetcher Task")
-    parser.add_argument("--url", default="https://example.com", help="URL to fetch data from")
-    parser.add_argument("--count", type=int, default=5, help="Number of items to fetch")
-    args = parser.parse_args()
+    os.makedirs('log', exist_ok=True)
+    logger.remove()
+    logger.add(sys.stdout, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>")
+    logger.add("log/task.log", format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}", rotation="10 MB", enqueue=True)
 
-    print(f"Starting Data Fetcher Task with url={args.url}, count={args.count}")
-    for i in range(args.count):
-        print(f"[{time.strftime('%H:%M:%S')}] Fetching item {i+1}/{args.count} from {args.url}...")
+    logger.info("Starting Data Fetcher Task")
+    count = 5
+    for i in range(count):
+        logger.info(f"Fetching item {i+1}/{count}...")
         time.sleep(1)
     
-    print("Data Fetcher Task completed successfully.")
+    logger.success("Data Fetcher Task completed successfully.")
 
 if __name__ == "__main__":
     main()

@@ -1,19 +1,20 @@
-import argparse
 import time
 import sys
+import os
+from loguru import logger
 
 def main():
-    parser = argparse.ArgumentParser(description="Data Processor Task")
-    parser.add_argument("--input", default="input.json", help="Input file path")
-    parser.add_argument("--output", default="output.json", help="Output file path")
-    args = parser.parse_args()
+    os.makedirs('log', exist_ok=True)
+    logger.remove()
+    logger.add(sys.stdout, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>")
+    logger.add("log/task.log", format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}", rotation="10 MB", enqueue=True)
 
-    print(f"Starting Data Processor Task from {args.input} to {args.output}")
-    for i in range(5):
-        print(f"[{time.strftime('%H:%M:%S')}] Processing batch {i+1}/5...")
+    logger.info("Starting Data Processor Task")
+    for i in range(3):
+        logger.info(f"Processing data chunk {i+1}/3...")
         time.sleep(1.5)
     
-    print(f"Data saved to {args.output}. Task completed.")
+    logger.success("Data Processor Task completed successfully.")
 
 if __name__ == "__main__":
     main()
